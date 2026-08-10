@@ -1,5 +1,5 @@
 --[[
-    Cloak V4 - Player Movement Debugging Engine (Freeze-Proof)
+    Cloak V4 - Player Movement Engine
     File: movement.lua
 --]]
 
@@ -15,6 +15,12 @@ local MovementModule = {
     FlightSpeed = 50,
     SpeedEnabled = false,
     WalkSpeed = 32,
+    
+    -- Jump Features
+    InfiniteJumpEnabled = false,
+    JumpPowerEnabled = false,
+    JumpPower = 50,
+
     Connections = {},
     KeysPressed = { W = false, A = false, S = false, D = false, Space = false, LeftShift = false },
 }
@@ -54,14 +60,34 @@ function MovementModule:Init()
     table.insert(self.Connections, inputBegan)
     table.insert(self.Connections, inputEnded)
 
-    -- Bound to Heartbeat physics step for zero frame lag
-    local physicsConn = RunService.Heartbeat:Connect(function()
-        if not self.SpeedEnabled and not self.FlightEnabled then return end
+    -- Infinite Jump Signal Hook
+    local jumpRequestConn = UserInputService.JumpRequest:Connect(function()
+        if not self.InfiniteJumpEnabled then return end
+        task.spawn(function()
+            local _, _, humanoid = GetSafeCharacter()
+            if humanoid then
+                humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+            end
+        end)
+    end)
+    table.insert(self.Connections, jumpRequestConn)
 
+    -- Physics Heartbeat Loop
+    local physicsConn = RunService.Heartbeat:Connect(function()
         local _, root, humanoid = GetSafeCharacter()
 
-        if humanoid and self.SpeedEnabled then
-            humanoid.WalkSpeed = self.WalkSpeed
+        if humanoid then
+            if self.SpeedEnabled then
+                humanoid.WalkSpeed = self.WalkSpeed
+            end
+
+            if self.JumpPowerEnabled then
+                if humanoid.UseJumpPower then
+                    humanoid.JumpPower = self.JumpPower
+                else
+                    humanoid.JumpHeight = (self.JumpPower * 0.14)
+                end
+            end
         end
 
         if self.FlightEnabled and root and humanoid then
@@ -100,9 +126,7 @@ function MovementModule:SetFlightEnabled(state)
     end)
 end
 
-function MovementModule:SetFlightSpeed(speed)
-    task.spawn(function() self.FlightSpeed = speed end)
-end
+function MovementModule:SetFlightSpeed(speed) task.spawn(function() self.FlightSpeed = speed end) end
 
 function MovementModule:SetSpeedEnabled(state)
     task.spawn(function()
@@ -114,14 +138,30 @@ function MovementModule:SetSpeedEnabled(state)
     end)
 end
 
-function MovementModule:SetWalkSpeed(speed)
-    task.spawn(function() self.WalkSpeed = speed end)
+function MovementModule:SetWalkSpeed(speed) task.spawn(function() self.WalkSpeed = speed end) end
+function MovementModule:SetInfiniteJumpEnabled(state) task.spawn(function() self.InfiniteJumpEnabled = state end) end
+
+function MovementModule:SetJumpPowerEnabled(state)
+    task.spawn(function()
+        self.JumpPowerEnabled = state
+        if not state then
+            local _, _, humanoid = GetSafeCharacter()
+            if humanoid then
+                humanoid.JumpPower = 50
+                humanoid.JumpHeight = 7.2
+            end
+        end
+    end)
 end
+
+function MovementModule:SetJumpPower(val) task.spawn(function() self.JumpPower = val end) end
 
 function MovementModule:Destroy()
     task.spawn(function()
         self:SetFlightEnabled(false)
         self:SetSpeedEnabled(false)
+        self:SetJumpPowerEnabled(false)
+        self.InfiniteJumpEnabled = false
 
         for _, conn in ipairs(self.Connections) do
             pcall(function() conn:Disconnect() end)

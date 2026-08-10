@@ -1,5 +1,5 @@
 --[[
-    Cloak V4 - Custom UI Library Framework (Freeze-Proof)
+    Cloak V4 - Custom UI Library Framework
     File: uilib.lua
 --]]
 
@@ -47,8 +47,8 @@ function UILib:CreateWindow(titleText)
 
     local mainFrame = Instance.new("Frame")
     mainFrame.Name = "MainFrame"
-    mainFrame.Size = UDim2.new(0, 600, 0, 380)
-    mainFrame.Position = UDim2.new(0.5, -300, 0.5, -190)
+    mainFrame.Size = UDim2.new(0, 620, 0, 400)
+    mainFrame.Position = UDim2.new(0.5, -310, 0.5, -200)
     mainFrame.BackgroundColor3 = THEME.Background
     mainFrame.BorderSizePixel = 0
     mainFrame.ClipsDescendants = true
@@ -97,7 +97,7 @@ function UILib:CreateWindow(titleText)
     contentArea.BackgroundTransparency = 1
     contentArea.Parent = mainFrame
 
-    -- Non-blocking Dragging Implementation
+    -- Non-blocking Dragging
     local dragging, dragStart, startPos
     mainFrame.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -167,7 +167,6 @@ function UILib:CreateWindow(titleText)
                     t.Page.Visible = false
                     t.Button.BackgroundColor3 = THEME.Card
                     t.Button.TextColor3 = THEME.TextMuted
-                    if i % 5 == 0 then task.wait() end -- Yield on large tab counts
                 end
                 tabScroll.Visible = true
                 tabButton.BackgroundColor3 = THEME.Accent
@@ -211,10 +210,7 @@ function UILib:CreateWindow(titleText)
             switch.MouseButton1Click:Connect(function()
                 state = not state
                 switch.BackgroundColor3 = state and THEME.Accent or Color3.fromRGB(40, 40, 40)
-                -- Isolate callback execution completely
-                task.spawn(function()
-                    callback(state)
-                end)
+                task.spawn(function() callback(state) end)
             end)
 
             return toggleFrame
@@ -238,6 +234,17 @@ function UILib:CreateWindow(titleText)
             textLabel.Font = Enum.Font.Gotham
             textLabel.TextXAlignment = Enum.TextXAlignment.Left
             textLabel.Parent = sliderFrame
+
+            local valLabel = Instance.new("TextLabel")
+            valLabel.Size = UDim2.new(0.3, -12, 0, 20)
+            valLabel.Position = UDim2.new(0.7, 0, 0, 4)
+            valLabel.BackgroundTransparency = 1
+            valLabel.Text = tostring(value)
+            valLabel.TextColor3 = THEME.Accent
+            valLabel.TextSize = 13
+            valLabel.Font = Enum.Font.GothamBold
+            valLabel.TextXAlignment = Enum.TextXAlignment.Right
+            valLabel.Parent = sliderFrame
 
             local track = Instance.new("TextButton")
             track.Size = UDim2.new(1, -24, 0, 6)
@@ -267,6 +274,7 @@ function UILib:CreateWindow(titleText)
                     task.spawn(function()
                         local mathPos = math.clamp((input.Position.X - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1)
                         value = math.floor(min + (max - min) * mathPos)
+                        valLabel.Text = tostring(value)
                         fill.Size = UDim2.new(mathPos, 0, 1, 0)
                         callback(value)
                     end)
@@ -293,9 +301,7 @@ function UILib:CreateWindow(titleText)
             button.Parent = btnFrame
 
             button.MouseButton1Click:Connect(function()
-                task.spawn(function()
-                    callback()
-                end)
+                task.spawn(function() callback() end)
             end)
 
             return btnFrame
@@ -316,9 +322,7 @@ end
 
 function UILib:Destroy()
     task.spawn(function()
-        if self.ScreenGui then
-            self.ScreenGui:Destroy()
-        end
+        if self.ScreenGui then self.ScreenGui:Destroy() end
     end)
 end
 

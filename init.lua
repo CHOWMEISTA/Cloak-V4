@@ -1,6 +1,7 @@
 --[[
-    Cloak V4 - Dynamic Remote Bootstrapper (Freeze-Proof)
+    Cloak V4 - Dynamic Remote Bootstrapper (Fully Consolidated)
     File: init.lua
+    Repository: https://raw.githubusercontent.com/CHOWMEISTA/Cloak-V4/refs/heads/main/
 --]]
 
 local UserInputService = game:GetService("UserInputService")
@@ -17,12 +18,10 @@ local CloakV4 = {
 
 local BASE_URL = "https://raw.githubusercontent.com/CHOWMEISTA/Cloak-V4/refs/heads/main/"
 
--- Safe Remote Module Loader with GC Breathers
 local function LoadRemoteModule(fileName)
     local fullUrl = BASE_URL .. fileName
     print(string.format("[Cloak V4] Fetching remote file: %s...", fileName))
 
-    -- Explicit thread yield to let the task scheduler breathe
     task.wait(0.2)
 
     local httpSuccess, rawCode = pcall(function()
@@ -30,7 +29,7 @@ local function LoadRemoteModule(fileName)
     end)
 
     if not httpSuccess or type(rawCode) ~= "string" or #rawCode == 0 then
-        warn(string.format("[Cloak V4 Error] HttpGet failed for %s", fileName))
+        warn(string.format("[Cloak V4 Error] Failed to HttpGet %s from: %s", fileName, fullUrl))
         return nil
     end
 
@@ -49,18 +48,19 @@ local function LoadRemoteModule(fileName)
 
     local executeSuccess, loadedModule = pcall(moduleChunk)
     if not executeSuccess or loadedModule == nil then
-        warn(string.format("[Cloak V4 Error] Execution error in %s: %s", fileName, tostring(loadedModule)))
+        warn(string.format("[Cloak V4 Error] Runtime execution error in %s: %s", fileName, tostring(loadedModule)))
         return nil
     end
 
+    print(string.format("[Cloak V4] Successfully loaded %s", fileName))
     return loadedModule
 end
 
 function CloakV4:Init()
     if self.Active then return end
 
-    -- Fully decouple the bootstrap sequence onto its own isolated green thread
     task.spawn(function()
+        -- Load modules sequentially
         local UILib = LoadRemoteModule("uilib.lua")
         if not UILib then warn("[Cloak V4 Abort] uilib.lua failed.") return end
         task.wait(0.2)
@@ -80,31 +80,121 @@ function CloakV4:Init()
         self.Active = true
         self.Modules = { UILib = UILib, Combat = Combat, Movement = Movement, Misc = Misc }
 
-        -- Build Interface
+        -- Build Expanded Window
         local Window = UILib:CreateWindow("Cloak V4")
 
-        -- Combat Tab
+        -- ---------------------------------------------------------------------
+        -- TAB 1: COMBAT
+        -- ---------------------------------------------------------------------
         local CombatTab = Window:CreateTab("Combat")
-        CombatTab:CreateToggle("Target Assist (CamLock)", false, function(s) Combat:SetTargetAssistEnabled(s) end)
-        CombatTab:CreateSlider("Target FOV", 30, 300, 120, function(v) Combat:SetFOV(v) end)
-        CombatTab:CreateSlider("Smoothness", 1, 20, 5, function(v) Combat:SetSmoothing(v) end)
-        CombatTab:CreateToggle("Click Validation Tool", false, function(s) Combat:SetClickValidationEnabled(s) end)
 
-        -- Movement Tab
+        CombatTab:CreateToggle("Target Assist (CamLock)", false, function(state)
+            Combat:SetTargetAssistEnabled(state)
+        end)
+
+        CombatTab:CreateSlider("Target FOV", 30, 300, 120, function(val)
+            Combat:SetFOV(val)
+        end)
+
+        CombatTab:CreateSlider("Smoothness", 1, 20, 5, function(val)
+            Combat:SetSmoothing(val)
+        end)
+
+        CombatTab:CreateToggle("Click Validation Tool", false, function(state)
+            Combat:SetClickValidationEnabled(state)
+        end)
+
+        -- ---------------------------------------------------------------------
+        -- TAB 2: HITBOXES
+        -- ---------------------------------------------------------------------
+        local HitboxTab = Window:CreateTab("Hitboxes")
+
+        HitboxTab:CreateToggle("Expand Target Hitboxes", false, function(state)
+            Combat:SetHitboxEnabled(state)
+        end)
+
+        HitboxTab:CreateSlider("Hitbox Scale", 2, 35, 10, function(val)
+            Combat:SetHitboxSize(val)
+        end)
+
+        HitboxTab:CreateSlider("Hitbox Transparency %", 0, 10, 7, function(val)
+            Combat:SetHitboxTransparency(val / 10)
+        end)
+
+        -- ---------------------------------------------------------------------
+        -- TAB 3: MOVEMENT
+        -- ---------------------------------------------------------------------
         local MovementTab = Window:CreateTab("Movement")
-        MovementTab:CreateToggle("Sandbox Flight Engine", false, function(s) Movement:SetFlightEnabled(s) end)
-        MovementTab:CreateSlider("Flight Speed", 10, 200, 50, function(v) Movement:SetFlightSpeed(v) end)
-        MovementTab:CreateToggle("Speed Multiplier", false, function(s) Movement:SetSpeedEnabled(s) end)
-        MovementTab:CreateSlider("WalkSpeed Multiplier", 16, 120, 32, function(v) Movement:SetWalkSpeed(v) end)
 
-        -- Automation Tab
-        local MiscTab = Window:CreateTab("Automation")
-        MiscTab:CreateToggle("Auto-Greeting on Match End", false, function(s) Misc:SetAutoGreetingEnabled(s) end)
-        MiscTab:CreateButton("Trigger Manual Greeting Test", function() Misc:SendGreeting("GG! Thanks for testing Cloak V4.") end)
+        MovementTab:CreateToggle("Sandbox Flight Engine", false, function(state)
+            Movement:SetFlightEnabled(state)
+        end)
+
+        MovementTab:CreateSlider("Flight Speed", 10, 200, 50, function(val)
+            Movement:SetFlightSpeed(val)
+        end)
+
+        MovementTab:CreateToggle("WalkSpeed Multiplier", false, function(state)
+            Movement:SetSpeedEnabled(state)
+        end)
+
+        MovementTab:CreateSlider("WalkSpeed Value", 16, 150, 32, function(val)
+            Movement:SetWalkSpeed(val)
+        end)
+
+        MovementTab:CreateToggle("Infinite Jump", false, function(state)
+            Movement:SetInfiniteJumpEnabled(state)
+        end)
+
+        MovementTab:CreateToggle("Jump Power Modifier", false, function(state)
+            Movement:SetJumpPowerEnabled(state)
+        end)
+
+        MovementTab:CreateSlider("Jump Power Value", 50, 300, 50, function(val)
+            Movement:SetJumpPower(val)
+        end)
+
+        -- ---------------------------------------------------------------------
+        -- TAB 4: VISUALS
+        -- ---------------------------------------------------------------------
+        local VisualsTab = Window:CreateTab("Visuals")
+
+        VisualsTab:CreateToggle("Entity Highlight (ESP)", false, function(state)
+            Misc:SetESPEnabled(state)
+        end)
+
+        VisualsTab:CreateToggle("Snap Tracers", false, function(state)
+            Misc:SetTracersEnabled(state)
+        end)
+
+        VisualsTab:CreateToggle("Use Team Colors", true, function(state)
+            Misc:SetUseTeamColors(state)
+        end)
+
+        VisualsTab:CreateToggle("FOV Circle Overlay", false, function(state)
+            Combat:SetFOVCircleEnabled(state)
+        end)
+
+        VisualsTab:CreateToggle("Fullbright Mode", false, function(state)
+            Misc:SetFullbrightEnabled(state)
+        end)
+
+        -- ---------------------------------------------------------------------
+        -- TAB 5: AUTOMATION
+        -- ---------------------------------------------------------------------
+        local AutoTab = Window:CreateTab("Automation")
+
+        AutoTab:CreateToggle("Auto-Greeting on Match End", false, function(state)
+            Misc:SetAutoGreetingEnabled(state)
+        end)
+
+        AutoTab:CreateButton("Trigger Manual Greeting Test", function()
+            Misc:SendGreeting("GG! Thanks for testing Cloak V4.")
+        end)
 
         -- Hotkey Binding
-        local toggleConnection = UserInputService.InputBegan:Connect(function(input, gpe)
-            if gpe then return end
+        local toggleConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+            if gameProcessed then return end
             if input.KeyCode == Enum.KeyCode.RightShift then
                 task.spawn(function()
                     Window:ToggleVisibility()
@@ -113,14 +203,14 @@ function CloakV4:Init()
         end)
         table.insert(self.Connections, toggleConnection)
 
-        -- Initialize child modules in isolated green threads with staggering
+        -- Start runtimes asynchronously
         task.spawn(function() Combat:Init() end)
         task.wait(0.1)
         task.spawn(function() Movement:Init() end)
         task.wait(0.1)
         task.spawn(function() Misc:Init() end)
 
-        print("[Cloak V4] Suite fully loaded and active.")
+        print("[Cloak V4] Suite fully initialized with 5 expanded tabs.")
     end)
 end
 
