@@ -1,35 +1,25 @@
 --[[
-    Cloak V4 - Master Unified Framework & Engine Suite
-    Features: Matrix/Vape V4 Dark Interface (uilib.lua style) with integrated
-              Combat, Movement, Visual Render, and Automation Engine Modules.
+    Cloak V4 - Master Script
+    File: init.lua
+    Repository: https://raw.githubusercontent.com/CHOWMEISTA/Cloak-V4/refs/heads/main/
 --]]
 
-local CoreGui = game:GetService("CoreGui")
 local UserInputService = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
-local TweenService = game:GetService("TweenService")
-local TextChatService = game:GetService("TextChatService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Lighting = game:GetService("Lighting")
 local Players = game:GetService("Players")
-local Workspace = game:GetService("Workspace")
 
 local LocalPlayer = Players.LocalPlayer
-local Mouse = LocalPlayer:GetMouse()
-local Camera = Workspace.CurrentCamera
 
--- Clean up previous execution traces
-if gethui then
-    local oldGui = gethui():FindFirstChild("CloakV4_UI")
-    if oldGui then oldGui:Destroy() end
-else
-    local oldGui = LocalPlayer:WaitForChild("PlayerGui"):FindFirstChild("CloakV4_UI")
-    if oldGui then oldGui:Destroy() end
-end
+local CloakV4 = {
+    Version = "4.0.0",
+    Active = false,
+    Modules = {},
+}
 
--- ==========================================
--- 1. CUSTOM MATRIX / VAPE V4 UI FRAMEWORK
--- ==========================================
+local BASE_URL = "https://raw.githubusercontent.com/CHOWMEISTA/Cloak-V4/refs/heads/main/"
+
+-- =========================================================================
+-- EMBEDDED DYNAMIC UI LIBRARY FRAMEWORK
+-- =========================================================================
 
 local UILib = {
     ScreenGui = nil,
@@ -56,6 +46,9 @@ local function CreateCorner(parent)
 end
 
 function UILib:CreateWindow(titleText)
+    if self.ScreenGui then self.ScreenGui:Destroy() end
+    table.clear(self.Tabs)
+
     local screenGui = Instance.new("ScreenGui")
     screenGui.Name = "CloakV4_UI"
     screenGui.ResetOnSpawn = false
@@ -79,14 +72,12 @@ function UILib:CreateWindow(titleText)
     CreateCorner(mainFrame)
     self.MainFrame = mainFrame
 
-    -- Accent Border
     local accentBar = Instance.new("Frame")
     accentBar.Size = UDim2.new(1, 0, 0, 3)
     accentBar.BackgroundColor3 = THEME.Accent
     accentBar.BorderSizePixel = 0
     accentBar.Parent = mainFrame
 
-    -- Sidebar Area
     local sidebar = Instance.new("Frame")
     sidebar.Name = "Sidebar"
     sidebar.Size = UDim2.new(0, 160, 1, -3)
@@ -128,7 +119,6 @@ function UILib:CreateWindow(titleText)
     contentArea.BackgroundTransparency = 1
     contentArea.Parent = mainFrame
 
-    -- Dragging Logic
     local dragging, dragStart, startPos
     mainFrame.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -211,10 +201,7 @@ function UILib:CreateTab(tabName)
 
     tabButton.MouseButton1Click:Connect(Select)
 
-    if #UILib.Tabs == 0 then
-        Select()
-    end
-
+    if #UILib.Tabs == 0 then Select() end
     table.insert(UILib.Tabs, tabObj)
 
     local TabElements = {}
@@ -249,9 +236,7 @@ function UILib:CreateTab(tabName)
         switch.MouseButton1Click:Connect(function()
             state = not state
             switch.BackgroundColor3 = state and THEME.Accent or Color3.fromRGB(40, 40, 40)
-            if callback then
-                task.spawn(function() callback(state) end)
-            end
+            if callback then task.spawn(function() callback(state) end) end
         end)
 
         return toggleFrame
@@ -342,9 +327,7 @@ function UILib:CreateTab(tabName)
         button.Parent = btnFrame
 
         button.MouseButton1Click:Connect(function()
-            if callback then
-                task.spawn(function() callback() end)
-            end
+            if callback then task.spawn(function() callback() end) end
         end)
 
         return btnFrame
@@ -356,9 +339,7 @@ end
 function UILib:ToggleVisibility()
     task.spawn(function()
         self.Visible = not self.Visible
-        if self.MainFrame then
-            self.MainFrame.Visible = self.Visible
-        end
+        if self.MainFrame then self.MainFrame.Visible = self.Visible end
     end)
 end
 
@@ -368,352 +349,123 @@ function UILib:Destroy()
     end)
 end
 
--- Global Menu Hotkey Binding (Right Shift)[cite: 1]
+-- Right Shift Toggle Keybind
 UserInputService.InputBegan:Connect(function(input, processed)
     if not processed and input.KeyCode == Enum.KeyCode.RightShift then
         UILib:ToggleVisibility()
     end
 end)
 
--- ==========================================
--- 2. INTEGRATED FEATURE MODULE ENGINES
--- ==========================================
+-- =========================================================================
+-- REMOTE MODULE LOADER
+-- =========================================================================
 
-local Connections = {}
-local State = {
-    Fly = false,
-    FlySpeed = 50,
-    Speed = false,
-    SpeedValue = 60,
-    InfiniteJump = false,
-    JumpPower = false,
-    JumpPowerVal = 50,
-    Aimbot = false,
-    AimbotFOV = 120,
-    AimbotSmoothness = 5,
-    Triggerbot = false,
-    EspEnabled = false,
-    ChamsEnabled = false,
-    TracersEnabled = false,
-    FOVCircle = false,
-    Fullbright = false,
-    AutoGreeting = false,
-}
+local function LoadRemoteModule(fileName)
+    local fullUrl = BASE_URL .. fileName .. "?nocache=" .. tostring(os.time())
+    print(string.format("[Cloak V4] Fetching remote file: %s...", fileName))
 
-local FlyBV = nil
-local VisualContainer = Instance.new("Folder", CoreGui)
-VisualContainer.Name = "CloakRenderStore"
+    task.wait(0.1)
 
-local FOVCircleObj = nil
-if Drawing then
-    local circle = Drawing.new("Circle")
-    circle.Visible = false
-    circle.Thickness = 1.5
-    circle.NumSides = 64
-    circle.Color = Color3.fromRGB(0, 255, 102)
-    circle.Filled = false
-    circle.Transparency = 0.8
-    FOVCircleObj = circle
-end
-
--- ------------------------------------------
--- MOVEMENT MODULES
--- ------------------------------------------
-
-local function UpdateFlyState(enabled)
-    State.Fly = enabled
-    if Connections.Fly then Connections.Fly:Disconnect() end
-    if FlyBV then FlyBV:Destroy() FlyBV = nil end
-    if not enabled then return end
-
-    local char = LocalPlayer.Character
-    local hrp = char and char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
-
-    FlyBV = Instance.new("BodyVelocity")
-    FlyBV.MaxForce = Vector3.new(1e5, 1e5, 1e5)
-    FlyBV.Velocity = Vector3.zero
-    FlyBV.Parent = hrp
-
-    Connections.Fly = RunService.RenderStepped:Connect(function()
-        local hum = char:FindFirstChild("Humanoid")
-        if not hrp or not hum or not Camera then return end
-
-        local speed = State.FlySpeed
-        local vel = Vector3.zero
-
-        if hum.MoveDirection.Magnitude > 0 then
-            local camCF = Camera.CFrame
-            local localDir = camCF:VectorToObjectSpace(hum.MoveDirection)
-            vel = camCF:VectorToWorldSpace(localDir) * speed
-        end
-
-        local verticalY = 0
-        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then 
-            verticalY = speed
-        elseif UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then 
-            verticalY = -speed
-        end
-
-        if verticalY ~= 0 then
-            vel = Vector3.new(vel.X, verticalY, vel.Z)
-        end
-
-        FlyBV.Velocity = vel
+    local httpSuccess, rawCode = pcall(function()
+        return game:HttpGet(fullUrl)
     end)
-end
 
-local function UpdateSpeedState(enabled)
-    State.Speed = enabled
-    if Connections.Speed then Connections.Speed:Disconnect() end
-    if not enabled then return end
+    if not httpSuccess or type(rawCode) ~= "string" or #rawCode == 0 then
+        warn(string.format("[Cloak V4 Error] Failed to HttpGet %s", fileName))
+        return nil
+    end
 
-    Connections.Speed = RunService.Heartbeat:Connect(function()
-        local char = LocalPlayer.Character
-        local hrp = char and char:FindFirstChild("HumanoidRootPart")
-        local hum = char and char:FindFirstChild("Humanoid")
-        if hrp and hum and hum.MoveDirection.Magnitude > 0 then
-            hrp.Velocity = Vector3.new(hum.MoveDirection.X * State.SpeedValue, hrp.Velocity.Y, hum.MoveDirection.Z * State.SpeedValue)
-        end
+    task.wait(0.05)
+
+    local compileSuccess, moduleChunk = pcall(function()
+        return loadstring(rawCode)
     end)
+
+    if not compileSuccess or type(moduleChunk) ~= "function" then
+        warn(string.format("[Cloak V4 Error] Loadstring failed for %s: %s", fileName, tostring(moduleChunk)))
+        return nil
+    end
+
+    local executeSuccess, loadedModule = pcall(moduleChunk)
+    if not executeSuccess or loadedModule == nil then
+        warn(string.format("[Cloak V4 Error] Runtime error in %s: %s", fileName, tostring(loadedModule)))
+        return nil
+    end
+
+    return loadedModule
 end
 
--- Infinite Jump Hook
-UserInputService.JumpRequest:Connect(function()
-    if State.InfiniteJump then
-        local char = LocalPlayer.Character
-        local hum = char and char:FindFirstChildOfClass("Humanoid")
-        if hum then
-            hum:ChangeState(Enum.HumanoidStateType.Jumping)
-        end
-    end
-end)
+function CloakV4:Init()
+    if self.Active then return end
 
--- Jump Power Loop
-RunService.Heartbeat:Connect(function()
-    if State.JumpPower then
-        local char = LocalPlayer.Character
-        local hum = char and char:FindFirstChildOfClass("Humanoid")
-        if hum then
-            if hum.UseJumpPower then
-                hum.JumpPower = State.JumpPowerVal
-            else
-                hum.JumpHeight = State.JumpPowerVal * 0.14
-            end
-        end
-    end
-end)
-
--- ------------------------------------------
--- COMBAT MODULES
--- ------------------------------------------
-
-local function GetClosestTarget()
-    local closest, shortest = nil, State.AimbotFOV
-    local mousePos = Vector2.new(Mouse.X, Mouse.Y)
-
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer and p.Character then
-            local head = p.Character:FindFirstChild("Head")
-            local hum = p.Character:FindFirstChildOfClass("Humanoid")
-            if head and hum and hum.Health > 0 then
-                local screenPos, visible = Camera:WorldToViewportPoint(head.Position)
-                if visible then
-                    local dist = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
-                    if dist < shortest then
-                        shortest = dist
-                        closest = head.Position
-                    end
-                end
-            end
-        end
-    end
-    return closest
-end
-
-local function UpdateAimbotState(enabled)
-    State.Aimbot = enabled
-    if Connections.Aimbot then Connections.Aimbot:Disconnect() end
-    if not enabled then return end
-
-    Connections.Aimbot = RunService.RenderStepped:Connect(function(dt)
-        local targetPosition = GetClosestTarget()
-        if targetPosition then
-            local lerpFactor = math.clamp((1 / State.AimbotSmoothness) * (dt * 60), 0.01, 1)
-            Camera.CFrame = Camera.CFrame:Lerp(CFrame.new(Camera.CFrame.Position, targetPosition), lerpFactor)
-        end
-    end)
-end
-
-local function UpdateTriggerbotState(enabled)
-    State.Triggerbot = enabled
-    if Connections.Trigger then Connections.Trigger:Disconnect() end
-    if not enabled then return end
-
-    Connections.Trigger = RunService.RenderStepped:Connect(function()
-        local target = Mouse.Target
-        if target and target.Parent then
-            local enemy = Players:GetPlayerFromCharacter(target.Parent)
-            if enemy and enemy ~= LocalPlayer then
-                if mouse1click then mouse1click() end
-            end
-        end
-    end)
-end
-
--- ------------------------------------------
--- VISUAL & LIGHTING RENDER MODULES
--- ------------------------------------------
-
-local function UpdateVisuals()
-    VisualContainer:ClearAllChildren()
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer and p.Character then
-            local char = p.Character
-            local hrp = char:FindFirstChild("HumanoidRootPart")
-            local hum = char:FindFirstChildOfClass("Humanoid")
-
-            if hrp and hum and hum.Health > 0 then
-                local playerColor = (p.Team and p.TeamColor) and p.TeamColor.Color or Color3.fromRGB(0, 255, 102)
-
-                -- Box Highlight ESP
-                if State.EspEnabled then
-                    local box = Instance.new("Highlight", VisualContainer)
-                    box.Adornee = char
-                    box.FillTransparency = 0.6
-                    box.FillColor = playerColor
-                    box.OutlineColor = Color3.fromRGB(255, 255, 255)
-                end
-
-                -- Solid Model Chams
-                if State.ChamsEnabled then
-                    local cham = Instance.new("Highlight", VisualContainer)
-                    cham.Adornee = char
-                    cham.FillColor = Color3.fromRGB(255, 0, 100)
-                    cham.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                end
-
-                -- Bottom Screen Line Tracers
-                if State.TracersEnabled then
-                    local screenPos, onScreen = Camera:WorldToViewportPoint(hrp.Position)
-                    if onScreen then
-                        local line = Instance.new("LineHandleAdornment", VisualContainer)
-                        line.Length = (Camera.CFrame.Position - hrp.Position).Magnitude
-                        line.Thickness = 2
-                        line.Color3 = playerColor
-                        line.Adornee = Camera
-                        line.CFrame = CFrame.new(Camera.CFrame.Position, hrp.Position)
-                    end
-                end
-            end
-        end
-    end
-end
-
-local function RefreshVisualLoop()
-    if Connections.RenderLoop then Connections.RenderLoop:Disconnect() end
-    if State.EspEnabled or State.ChamsEnabled or State.TracersEnabled then
-        Connections.RenderLoop = RunService.RenderStepped:Connect(UpdateVisuals)
-    else
-        VisualContainer:ClearAllChildren()
-    end
-end
-
--- FOV Circle & Fullbright Loop
-RunService.RenderStepped:Connect(function()
-    if FOVCircleObj then
-        if State.FOVCircle then
-            local vp = Camera.ViewportSize
-            FOVCircleObj.Position = Vector2.new(vp.X / 2, vp.Y / 2)
-            FOVCircleObj.Radius = State.AimbotFOV
-            FOVCircleObj.Visible = true
-        else
-            FOVCircleObj.Visible = false
-        end
-    end
-
-    if State.Fullbright then
-        Lighting.Ambient = Color3.fromRGB(255, 255, 255)
-        Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
-        Lighting.ClockTime = 12
-    end
-end)
-
--- ------------------------------------------
--- AUTOMATION MODULES
--- ------------------------------------------
-
-local function SendGreeting(text)
     task.spawn(function()
-        if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
-            local channel = TextChatService.TextChannels:FindFirstChild("RBXGeneral")
-            if channel then pcall(function() channel:SendAsync(text) end) end
-        else
-            local defaultEvents = ReplicatedStorage:FindFirstChild("DefaultChatSystemChatEvents")
-            if defaultEvents then
-                local sayReq = defaultEvents:FindFirstChild("SayMessageRequest")
-                if sayReq then pcall(function() sayReq:FireServer(text, "All") end) end
-            end
+        -- Load modules.lua dynamically
+        local Modules = LoadRemoteModule("modules.lua")
+        if not Modules then
+            warn("[Cloak V4 Abort] Make sure 'modules.lua' is uploaded to your GitHub repository.")
+            return
         end
+
+        self.Active = true
+        self.Modules = { Engine = Modules }
+
+        -- Start Engine Runtimes
+        Modules:Init()
+
+        -- Build Window Instance
+        local Window = UILib:CreateWindow("Cloak V4")
+
+        -- TAB 1: COMBAT
+        local CombatTab = Window:CreateTab("Combat")
+        CombatTab:CreateToggle("Aimbot (CamLock)", false, function(s) Modules:ToggleAimbot(s) end)
+        CombatTab:CreateSlider("Aimbot FOV", 30, 300, 120, function(v) Modules.State.AimbotFOV = v end)
+        CombatTab:CreateSlider("Smoothness", 1, 20, 5, function(v) Modules.State.AimbotSmoothness = v end)
+        CombatTab:CreateToggle("Triggerbot", false, function(s) Modules:ToggleTriggerbot(s) end)
+        CombatTab:CreateToggle("FOV Circle Overlay", false, function(s) Modules.State.FOVCircle = s end)
+
+        -- TAB 2: MOVEMENT
+        local MovementTab = Window:CreateTab("Movement")
+        MovementTab:CreateToggle("Sandbox Flight Engine", false, function(s) Modules:ToggleFly(s) end)
+        MovementTab:CreateSlider("Flight Speed", 10, 200, 50, function(v) Modules.State.FlySpeed = v end)
+        MovementTab:CreateToggle("Velocity WalkSpeed", false, function(s) Modules:ToggleSpeed(s) end)
+        MovementTab:CreateSlider("WalkSpeed Value", 16, 150, 60, function(v) Modules.State.SpeedValue = v end)
+        MovementTab:CreateToggle("Infinite Jump", false, function(s) Modules.State.InfiniteJump = s end)
+        MovementTab:CreateToggle("Jump Power Modifier", false, function(s) Modules.State.JumpPower = s end)
+        MovementTab:CreateSlider("Jump Power Value", 50, 300, 50, function(v) Modules.State.JumpPowerVal = v end)
+
+        -- TAB 3: VISUALS
+        local VisualsTab = Window:CreateTab("Visuals")
+        VisualsTab:CreateToggle("Highlight ESP", false, function(s) Modules.State.EspEnabled = s Modules:RefreshVisualLoop() end)
+        VisualsTab:CreateToggle("Solid Model Chams", false, function(s) Modules.State.ChamsEnabled = s Modules:RefreshVisualLoop() end)
+        VisualsTab:CreateToggle("3D World Tracers", false, function(s) Modules.State.TracersEnabled = s Modules:RefreshVisualLoop() end)
+        VisualsTab:CreateToggle("Fullbright Mode", false, function(s) Modules.State.Fullbright = s end)
+
+        -- TAB 4: AUTOMATION
+        local AutoTab = Window:CreateTab("Automation")
+        AutoTab:CreateToggle("Auto-Greeting on Match End", false, function(s) Modules.State.AutoGreeting = s end)
+        AutoTab:CreateButton("Trigger Manual Greeting Test", function() Modules:SendGreeting("GG! Thanks for testing Cloak V4.") end)
+
+        -- TAB 5: SETTINGS
+        local SettingsTab = Window:CreateTab("Settings")
+        SettingsTab:CreateButton("Unload Cloak V4 Suite", function()
+            CloakV4:Destroy()
+        end)
+
+        print("[Cloak V4] Suite fully initialized with 5 tabs.")
     end)
 end
 
-Workspace:GetAttributeChangedSignal("MatchState"):Connect(function()
-    local currentState = Workspace:GetAttribute("MatchState")
-    if State.AutoGreeting and (currentState == "Ended" or currentState == "Finished" or currentState == "GameOver") then
-        SendGreeting("GG! Excellent match everyone.")
-    end
+function CloakV4:Destroy()
+    task.spawn(function()
+        if self.Modules.Engine then pcall(function() self.Modules.Engine:Destroy() end) end
+        UILib:Destroy()
+        self.Active = false
+        print("[Cloak V4] Suite unloaded cleanly.")
+    end)
+end
+
+task.defer(function()
+    CloakV4:Init()
 end)
 
--- ==========================================
--- 3. INTERFACE BUILDER & MODULE BINDINGS
--- ==========================================
-
-local Window = UILib:CreateWindow("Cloak V4")
-
--- TAB 1: COMBAT
-local CombatTab = Window:CreateTab("Combat")
-CombatTab:CreateToggle("Aimbot (CamLock)", false, function(s) UpdateAimbotState(s) end)
-CombatTab:CreateSlider("Aimbot FOV", 30, 300, 120, function(v) State.AimbotFOV = v end)
-CombatTab:CreateSlider("Smoothness", 1, 20, 5, function(v) State.AimbotSmoothness = v end)
-CombatTab:CreateToggle("Triggerbot", false, function(s) UpdateTriggerbotState(s) end)
-CombatTab:CreateToggle("FOV Circle Overlay", false, function(s) State.FOVCircle = s end)
-
--- TAB 2: MOVEMENT
-local MovementTab = Window:CreateTab("Movement")
-MovementTab:CreateToggle("Sandbox Flight Engine", false, function(s) UpdateFlyState(s) end)
-MovementTab:CreateSlider("Flight Speed", 10, 200, 50, function(v) State.FlySpeed = v end)
-MovementTab:CreateToggle("Velocity WalkSpeed", false, function(s) UpdateSpeedState(s) end)
-MovementTab:CreateSlider("WalkSpeed Value", 16, 150, 60, function(v) State.SpeedValue = v end)
-MovementTab:CreateToggle("Infinite Jump", false, function(s) State.InfiniteJump = s end)
-MovementTab:CreateToggle("Jump Power Modifier", false, function(s) State.JumpPower = s end)
-MovementTab:CreateSlider("Jump Power Value", 50, 300, 50, function(v) State.JumpPowerVal = v end)
-
--- TAB 3: VISUALS
-local VisualsTab = Window:CreateTab("Visuals")
-VisualsTab:CreateToggle("Highlight ESP", false, function(s) State.EspEnabled = s RefreshVisualLoop() end)
-VisualsTab:CreateToggle("Solid Model Chams", false, function(s) State.ChamsEnabled = s RefreshVisualLoop() end)
-VisualsTab:CreateToggle("3D World Tracers", false, function(s) State.TracersEnabled = s RefreshVisualLoop() end)
-VisualsTab:CreateToggle("Fullbright Mode", false, function(s) State.Fullbright = s end)
-
--- TAB 4: AUTOMATION
-local AutoTab = Window:CreateTab("Automation")
-AutoTab:CreateToggle("Auto-Greeting on Match End", false, function(s) State.AutoGreeting = s end)
-AutoTab:CreateButton("Trigger Manual Greeting Test", function() SendGreeting("GG! Thanks for testing Cloak V4.") end)
-
--- TAB 5: SETTINGS
-local SettingsTab = Window:CreateTab("Settings")
-SettingsTab:CreateButton("Unload Cloak V4 Suite", function()
-    if Connections.Fly then Connections.Fly:Disconnect() end
-    if Connections.Speed then Connections.Speed:Disconnect() end
-    if Connections.Aimbot then Connections.Aimbot:Disconnect() end
-    if Connections.Trigger then Connections.Trigger:Disconnect() end
-    if Connections.RenderLoop then Connections.RenderLoop:Disconnect() end
-    if FlyBV then FlyBV:Destroy() end
-    if FOVCircleObj then pcall(function() FOVCircleObj:Remove() end) end
-    VisualContainer:Destroy()
-    UILib:Destroy()
-    print("[Cloak V4] Unloaded cleanly.")
-end)
-
-print("Cloak V4 Suite Fully Loaded. Press [Right Shift] to toggle visibility.")
+return CloakV4
