@@ -1,7 +1,6 @@
 --[[
-    Cloak V4 - Automation & Match Event Tools
+    Cloak V4 - Automation Tools (Crash-Hardened)
     File: misc.lua
-    Description: Monitors game state signals or chat output to automate round end events.
 --]]
 
 local TextChatService = game:GetService("TextChatService")
@@ -15,55 +14,42 @@ local MiscModule = {
 }
 
 function MiscModule:Init()
-    -- Monitor Workspace/ReplicatedStorage state attributes for match end signals
     local matchStateConnection = Workspace:GetAttributeChangedSignal("MatchState"):Connect(function()
-        local currentState = Workspace:GetAttribute("MatchState")
-        if self.AutoGreetingEnabled and (currentState == "Ended" or currentState == "Finished" or currentState == "GameOver") then
-            self:SendGreeting(self.DefaultGreeting)
-        end
+        task.spawn(function()
+            local currentState = Workspace:GetAttribute("MatchState")
+            if self.AutoGreetingEnabled and (currentState == "Ended" or currentState == "Finished" or currentState == "GameOver") then
+                self:SendGreeting(self.DefaultGreeting)
+            end
+        end)
     end)
     table.insert(self.Connections, matchStateConnection)
-
-    -- Monitor ReplicatedStorage match status attribute if present
-    local repConnection = ReplicatedStorage:GetAttributeChangedSignal("Winner"):Connect(function()
-        if self.AutoGreetingEnabled then
-            self:SendGreeting(self.DefaultGreeting)
-        end
-    end)
-    table.insert(self.Connections, repConnection)
 end
 
 function MiscModule:SendGreeting(message)
-    local phrase = message or self.DefaultGreeting
+    task.spawn(function()
+        local phrase = message or self.DefaultGreeting
 
-    -- Modern TextChatService implementation
-    if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
-        local generalChannel = TextChatService.TextChannels:FindFirstChild("RBXGeneral")
-        if generalChannel then
-            generalChannel:SendAsync(phrase)
-        end
-    else
-        -- Legacy Chat fallback
-        local defaultChatSystemChatEvents = ReplicatedStorage:FindFirstChild("DefaultChatSystemChatEvents")
-        if defaultChatSystemChatEvents then
-            local sayMessageRequest = defaultChatSystemChatEvents:FindFirstChild("SayMessageRequest")
-            if sayMessageRequest then
-                sayMessageRequest:FireServer(phrase, "All")
+        if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
+            local generalChannel = TextChatService.TextChannels:FindFirstChild("RBXGeneral")
+            if generalChannel then
+                generalChannel:SendAsync(phrase)
+            end
+        else
+            local defaultChatSystemChatEvents = ReplicatedStorage:FindFirstChild("DefaultChatSystemChatEvents")
+            if defaultChatSystemChatEvents then
+                local sayMessageRequest = defaultChatSystemChatEvents:FindFirstChild("SayMessageRequest")
+                if sayMessageRequest then
+                    sayMessageRequest:FireServer(phrase, "All")
+                end
             end
         end
-    end
-
-    print("[Cloak V4 - Auto-Greeting] Dispatched message:", phrase)
+    end)
 end
 
-function MiscModule:SetAutoGreetingEnabled(state)
-    self.AutoGreetingEnabled = state
-end
+function MiscModule:SetAutoGreetingEnabled(state) self.AutoGreetingEnabled = state end
 
 function MiscModule:Destroy()
-    for _, conn in ipairs(self.Connections) do
-        conn:Disconnect()
-    end
+    for _, conn in ipairs(self.Connections) do conn:Disconnect() end
     table.clear(self.Connections)
 end
 

@@ -1,7 +1,6 @@
 --[[
-    Cloak V4 - Player Movement Debugging Engine
+    Cloak V4 - Player Movement Debugging Engine (Crash-Hardened)
     File: movement.lua
-    Description: Provides WASD+Space/Shift sandbox flight navigation and WalkSpeed control.
 --]]
 
 local RunService = game:GetService("RunService")
@@ -10,7 +9,6 @@ local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 
 local LocalPlayer = Players.LocalPlayer
-local Camera = Workspace.CurrentCamera
 
 local MovementModule = {
     FlightEnabled = false,
@@ -19,22 +17,21 @@ local MovementModule = {
     WalkSpeed = 32,
     Connections = {},
     KeysPressed = { W = false, A = false, S = false, D = false, Space = false, LeftShift = false },
-    LinearVelocity = nil,
-    Attachment = nil,
 }
 
-local function GetRootPart()
+local function GetSafeCharacter()
     local char = LocalPlayer.Character
-    return char and char:FindFirstChild("HumanoidRootPart")
-end
-
-local function GetHumanoid()
-    local char = LocalPlayer.Character
-    return char and char:FindFirstChildOfClass("Humanoid")
+    if char and char:Parent() then
+        local root = char:FindFirstChild("HumanoidRootPart")
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if root and hum and hum.Health > 0 then
+            return char, root, hum
+        end
+    end
+    return nil, nil, nil
 end
 
 function MovementModule:Init()
-    -- Key bindings tracking for Flight movement
     local inputBegan = UserInputService.InputBegan:Connect(function(input, gpe)
         if gpe then return end
         if input.KeyCode == Enum.KeyCode.W then self.KeysPressed.W = true end
@@ -57,26 +54,20 @@ function MovementModule:Init()
     table.insert(self.Connections, inputBegan)
     table.insert(self.Connections, inputEnded)
 
-    -- Primary Flight & Speed Multiplier Physics Loop
-    local renderConn = RunService.RenderStepped:Connect(function(deltaTime)
-        local root = GetRootPart()
-        local humanoid = GetHumanoid()
+    -- Bind flight velocity application to Heartbeat physics step (prevents RenderStepped crashes)
+    local physicsConn = RunService.Heartbeat:Connect(function()
+        local _, root, humanoid = GetSafeCharacter()
 
-        -- WalkSpeed Modifier Loop
-        if humanoid then
-            if self.SpeedEnabled then
-                humanoid.WalkSpeed = self.WalkSpeed
-            else
-                if humanoid.WalkSpeed == self.WalkSpeed then
-                    humanoid.WalkSpeed = 16
-                end
-            end
+        if humanoid and self.SpeedEnabled then
+            humanoid.WalkSpeed = self.WalkSpeed
         end
 
-        -- Flight Engine Logic
-        if self.FlightEnabled and root then
+        if self.FlightEnabled and root and humanoid then
+            local camera = Workspace.CurrentCamera
+            if not camera then return end
+
             local moveVector = Vector3.zero
-            local camCFrame = Camera.CFrame
+            local camCFrame = camera.CFrame
 
             if self.KeysPressed.W then moveVector += camCFrame.LookVector end
             if self.KeysPressed.S then moveVector -= camCFrame.LookVector end
@@ -90,25 +81,21 @@ function MovementModule:Init()
             end
 
             root.AssemblyLinearVelocity = moveVector
-            if humanoid then
-                humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
-            end
+            humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
         end
     end)
-    table.insert(self.Connections, renderConn)
+    table.insert(self.Connections, physicsConn)
 end
 
 function MovementModule:SetFlightEnabled(state)
     self.FlightEnabled = state
-    local root = GetRootPart()
-    local humanoid = GetHumanoid()
-
-    if not state and root then
-        root.AssemblyLinearVelocity = Vector3.zero
-        if humanoid then
+    task.defer(function()
+        local _, root, humanoid = GetSafeCharacter()
+        if not state and root and humanoid then
+            root.AssemblyLinearVelocity = Vector3.zero
             humanoid:ChangeState(Enum.HumanoidStateType.Landed)
         end
-    end
+    end)
 end
 
 function MovementModule:SetFlightSpeed(speed)
@@ -118,10 +105,10 @@ end
 function MovementModule:SetSpeedEnabled(state)
     self.SpeedEnabled = state
     if not state then
-        local humanoid = GetHumanoid()
-        if humanoid then
-            humanoid.WalkSpeed = 16
-        end
+        task.defer(function()
+            local _, _, humanoid = GetSafeCharacter()
+            if humanoid then humanoid.WalkSpeed = 16 end
+        end)
     end
 end
 
@@ -133,9 +120,7 @@ function MovementModule:Destroy()
     self:SetFlightEnabled(false)
     self:SetSpeedEnabled(false)
 
-    for _, conn in ipairs(self.Connections) do
-        conn:Disconnect()
-    end
+    for _, conn in ipairs(self.Connections) do conn:Disconnect() end
     table.clear(self.Connections)
 end
 
