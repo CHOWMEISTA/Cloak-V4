@@ -1,5 +1,5 @@
 --[[
-    Cloak V4 - Master Bootstrapper (Schema Driven)
+    Cloak V4 - Dynamic Bootstrapper (Cache-Bypassing)
     File: init.lua
     Repository: https://raw.githubusercontent.com/CHOWMEISTA/Cloak-V4/refs/heads/main/
 --]]
@@ -16,8 +16,10 @@ local CloakV4 = {
 
 local BASE_URL = "https://raw.githubusercontent.com/CHOWMEISTA/Cloak-V4/refs/heads/main/"
 
+-- Safe Remote Module Loader with Cache Buster
 local function LoadRemoteModule(fileName)
-    local fullUrl = BASE_URL .. fileName
+    -- Appending os.time() forces GitHub CDN to return fresh code instantly
+    local fullUrl = BASE_URL .. fileName .. "?nocache=" .. tostring(os.time())
     print(string.format("[Cloak V4] Fetching remote file: %s...", fileName))
 
     task.wait(0.15)
@@ -27,7 +29,7 @@ local function LoadRemoteModule(fileName)
     end)
 
     if not httpSuccess or type(rawCode) ~= "string" or #rawCode == 0 then
-        warn(string.format("[Cloak V4 Error] Failed to HttpGet %s", fileName))
+        warn(string.format("[Cloak V4 Error] Failed to HttpGet %s from %s", fileName, fullUrl))
         return nil
     end
 
@@ -46,7 +48,7 @@ local function LoadRemoteModule(fileName)
 
     local executeSuccess, loadedModule = pcall(moduleChunk)
     if not executeSuccess or loadedModule == nil then
-        warn(string.format("[Cloak V4 Error] Runtime execution error in %s: %s", fileName, tostring(loadedModule)))
+        warn(string.format("[Cloak V4 Error] Runtime error in %s: %s", fileName, tostring(loadedModule)))
         return nil
     end
 
@@ -57,12 +59,15 @@ function CloakV4:Init()
     if self.Active then return end
 
     task.spawn(function()
-        -- 1. Load GUI Manager first
+        -- 1. Fetch GUI Framework
         local GUI = LoadRemoteModule("gui.lua")
-        if not GUI then warn("[Cloak V4 Abort] gui.lua failed to load.") return end
+        if not GUI then 
+            warn("[Cloak V4 Abort] Make sure 'gui.lua' is committed to your GitHub repo!") 
+            return 
+        end
         task.wait(0.15)
 
-        -- 2. Load Engine Modules
+        -- 2. Fetch Engine Modules
         local Combat = LoadRemoteModule("combat.lua")
         local Movement = LoadRemoteModule("movement.lua")
         local Misc = LoadRemoteModule("misc.lua")
@@ -70,14 +75,12 @@ function CloakV4:Init()
         self.Active = true
         self.Modules = { GUI = GUI, Combat = Combat, Movement = Movement, Misc = Misc }
 
-        -- 3. Initialize Window
+        -- 3. Construct Window
         GUI:CreateWindow("Cloak V4")
 
         -- ---------------------------------------------------------------------
-        -- HOW TO ADD TABS & MODULES EASY:
-        -- ---------------------------------------------------------------------
-
         -- TAB 1: COMBAT
+        -- ---------------------------------------------------------------------
         if Combat then
             local CombatTab = GUI:CreateTab("Combat")
             CombatTab:AddToggle("Target Assist (CamLock)", false, function(s) Combat:SetTargetAssistEnabled(s) end)
@@ -93,7 +96,9 @@ function CloakV4:Init()
             HitboxTab:AddSlider("Hitbox Transparency %", 0, 10, 7, function(v) Combat:SetHitboxTransparency(v / 10) end)
         end
 
+        -- ---------------------------------------------------------------------
         -- TAB 3: MOVEMENT
+        -- ---------------------------------------------------------------------
         if Movement then
             local MovementTab = GUI:CreateTab("Movement")
             MovementTab:AddToggle("Sandbox Flight Engine", false, function(s) Movement:SetFlightEnabled(s) end)
@@ -105,7 +110,9 @@ function CloakV4:Init()
             MovementTab:AddSlider("Jump Power Value", 50, 300, 50, function(v) Movement:SetJumpPower(v) end)
         end
 
+        -- ---------------------------------------------------------------------
         -- TAB 4: VISUALS
+        -- ---------------------------------------------------------------------
         if Misc then
             local VisualsTab = GUI:CreateTab("Visuals")
             VisualsTab:AddToggle("Entity Highlight (ESP)", false, function(s) Misc:SetESPEnabled(s) end)
@@ -119,9 +126,11 @@ function CloakV4:Init()
             AutoTab:AddButton("Trigger Manual Greeting Test", function() Misc:SendGreeting("GG! Thanks for testing Cloak V4.") end)
         end
 
-        -- EXAMPLE: TO ADD A NEW TAB (e.g. Settings Tab), JUST DO THIS:
+        -- ---------------------------------------------------------------------
+        -- TAB 6: SETTINGS
+        -- ---------------------------------------------------------------------
         local SettingsTab = GUI:CreateTab("Settings")
-        SettingsTab:AddButton("Unload Suite", function()
+        SettingsTab:AddButton("Unload Cloak V4", function()
             CloakV4:Destroy()
         end)
 
@@ -134,12 +143,12 @@ function CloakV4:Init()
         end)
         table.insert(self.Connections, toggleConnection)
 
-        -- Initialize child runtimes safely
+        -- Start Engine Runtimes
         if Combat and Combat.Init then task.spawn(function() Combat:Init() end) end
         if Movement and Movement.Init then task.spawn(function() Movement:Init() end) end
         if Misc and Misc.Init then task.spawn(function() Misc:Init() end) end
 
-        print("[Cloak V4] Suite fully initialized with gui.lua interface engine.")
+        print("[Cloak V4] Suite booted with cache-bypassing URLs.")
     end)
 end
 
@@ -156,7 +165,7 @@ function CloakV4:Destroy()
         if self.Modules.GUI then pcall(function() self.Modules.GUI:Destroy() end) end
 
         self.Active = false
-        print("[Cloak V4] Suite shut down.")
+        print("[Cloak V4] Shutdown complete.")
     end)
 end
 
