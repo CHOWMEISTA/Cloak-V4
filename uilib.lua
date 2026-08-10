@@ -1,6 +1,7 @@
 --[[
-    Cloak V4 - Custom UI Library Framework
+    Cloak V4 - Dynamic Custom UI Library Framework
     File: uilib.lua
+    Repository: https://raw.githubusercontent.com/CHOWMEISTA/Cloak-V4/refs/heads/main/
 --]]
 
 local TweenService = game:GetService("TweenService")
@@ -13,6 +14,8 @@ local UILib = {
     ScreenGui = nil,
     MainFrame = nil,
     Visible = true,
+    Tabs = {},
+    CurrentTab = nil,
 }
 
 local THEME = {
@@ -33,6 +36,12 @@ local function CreateCorner(parent)
 end
 
 function UILib:CreateWindow(titleText)
+    -- Clean up prior UI instances if present
+    if self.ScreenGui then
+        self.ScreenGui:Destroy()
+    end
+    table.clear(self.Tabs)
+
     local screenGui = Instance.new("ScreenGui")
     screenGui.Name = "CloakV4_UI"
     screenGui.ResetOnSpawn = false
@@ -56,13 +65,16 @@ function UILib:CreateWindow(titleText)
     CreateCorner(mainFrame)
     self.MainFrame = mainFrame
 
+    -- Accent Top Border
     local accentBar = Instance.new("Frame")
     accentBar.Size = UDim2.new(1, 0, 0, 3)
     accentBar.BackgroundColor3 = THEME.Accent
     accentBar.BorderSizePixel = 0
     accentBar.Parent = mainFrame
 
+    -- Left Sidebar
     local sidebar = Instance.new("Frame")
+    sidebar.Name = "Sidebar"
     sidebar.Size = UDim2.new(0, 160, 1, -3)
     sidebar.Position = UDim2.new(0, 0, 0, 3)
     sidebar.BackgroundColor3 = THEME.Sidebar
@@ -80,24 +92,31 @@ function UILib:CreateWindow(titleText)
     titleLabel.TextXAlignment = Enum.TextXAlignment.Left
     titleLabel.Parent = sidebar
 
-    local tabContainer = Instance.new("Frame")
-    tabContainer.Size = UDim2.new(1, -10, 1, -55)
-    tabContainer.Position = UDim2.new(0, 5, 0, 50)
-    tabContainer.BackgroundTransparency = 1
-    tabContainer.Parent = sidebar
+    -- Scrolling Tab Navigation Container (Supports unlimited tabs)
+    local tabScroll = Instance.new("ScrollingFrame")
+    tabScroll.Name = "TabScroll"
+    tabScroll.Size = UDim2.new(1, -10, 1, -55)
+    tabScroll.Position = UDim2.new(0, 5, 0, 50)
+    tabScroll.BackgroundTransparency = 1
+    tabScroll.BorderSizePixel = 0
+    tabScroll.ScrollBarThickness = 2
+    tabScroll.ScrollBarImageColor3 = THEME.Accent
+    tabScroll.Parent = sidebar
 
     local tabListLayout = Instance.new("UIListLayout")
     tabListLayout.SortOrder = Enum.SortOrder.LayoutOrder
     tabListLayout.Padding = UDim.new(0, 6)
-    tabListLayout.Parent = tabContainer
+    tabListLayout.Parent = tabScroll
 
+    -- Content Display Area
     local contentArea = Instance.new("Frame")
+    contentArea.Name = "ContentArea"
     contentArea.Size = UDim2.new(1, -170, 1, -13)
     contentArea.Position = UDim2.new(0, 165, 0, 8)
     contentArea.BackgroundTransparency = 1
     contentArea.Parent = mainFrame
 
-    -- Non-blocking Dragging
+    -- Non-blocking UI Window Dragging
     local dragging, dragStart, startPos
     mainFrame.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -127,197 +146,210 @@ function UILib:CreateWindow(titleText)
         end
     end)
 
-    local WindowObj = { Tabs = {} }
+    self.TabScroll = tabScroll
+    self.ContentArea = contentArea
 
-    function WindowObj:CreateTab(tabName)
-        local tabScroll = Instance.new("ScrollingFrame")
-        tabScroll.Name = tabName .. "_Page"
-        tabScroll.Size = UDim2.new(1, 0, 1, 0)
-        tabScroll.BackgroundTransparency = 1
-        tabScroll.BorderSizePixel = 0
-        tabScroll.ScrollBarThickness = 3
-        tabScroll.ScrollBarImageColor3 = THEME.Accent
-        tabScroll.Visible = false
-        tabScroll.Parent = contentArea
+    return self
+end
 
-        local pageLayout = Instance.new("UIListLayout")
-        pageLayout.SortOrder = Enum.SortOrder.LayoutOrder
-        pageLayout.Padding = UDim.new(0, 8)
-        pageLayout.Parent = tabScroll
+function UILib:CreateTab(tabName)
+    local pageScroll = Instance.new("ScrollingFrame")
+    pageScroll.Name = tabName .. "_Page"
+    pageScroll.Size = UDim2.new(1, 0, 1, 0)
+    pageScroll.BackgroundTransparency = 1
+    pageScroll.BorderSizePixel = 0
+    pageScroll.ScrollBarThickness = 3
+    pageScroll.ScrollBarImageColor3 = THEME.Accent
+    pageScroll.Visible = false
+    pageScroll.Parent = self.ContentArea
 
-        local tabButton = Instance.new("TextButton")
-        tabButton.Size = UDim2.new(1, 0, 0, 32)
-        tabButton.BackgroundColor3 = THEME.Card
-        tabButton.BorderSizePixel = 0
-        tabButton.Text = "  " .. tabName
-        tabButton.TextColor3 = THEME.TextMuted
-        tabButton.TextSize = 13
-        tabButton.Font = Enum.Font.GothamMedium
-        tabButton.TextXAlignment = Enum.TextXAlignment.Left
-        tabButton.AutoButtonColor = false
-        tabButton.Parent = tabContainer
-        CreateCorner(tabButton)
+    local pageLayout = Instance.new("UIListLayout")
+    pageLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    pageLayout.Padding = UDim.new(0, 8)
+    pageLayout.Parent = pageScroll
 
-        local tabObj = { Page = tabScroll, Button = tabButton }
+    local tabButton = Instance.new("TextButton")
+    tabButton.Name = tabName .. "_TabButton"
+    tabButton.Size = UDim2.new(1, -4, 0, 32)
+    tabButton.BackgroundColor3 = THEME.Card
+    tabButton.BorderSizePixel = 0
+    tabButton.Text = "  " .. tabName
+    tabButton.TextColor3 = THEME.TextMuted
+    tabButton.TextSize = 13
+    tabButton.Font = Enum.Font.GothamMedium
+    tabButton.TextXAlignment = Enum.TextXAlignment.Left
+    tabButton.AutoButtonColor = false
+    tabButton.Parent = self.TabScroll
+    CreateCorner(tabButton)
 
-        local function Select()
-            task.spawn(function()
-                for i = 1, #WindowObj.Tabs do
-                    local t = WindowObj.Tabs[i]
-                    t.Page.Visible = false
-                    t.Button.BackgroundColor3 = THEME.Card
-                    t.Button.TextColor3 = THEME.TextMuted
-                end
-                tabScroll.Visible = true
-                tabButton.BackgroundColor3 = THEME.Accent
-                tabButton.TextColor3 = Color3.fromRGB(0, 0, 0)
-            end)
-        end
+    local tabObj = { Page = pageScroll, Button = tabButton }
 
-        tabButton.MouseButton1Click:Connect(Select)
-        if #WindowObj.Tabs == 0 then Select() end
-        table.insert(WindowObj.Tabs, tabObj)
-
-        local TabElements = {}
-
-        function TabElements:CreateToggle(label, defaultState, callback)
-            local state = defaultState or false
-            local toggleFrame = Instance.new("Frame")
-            toggleFrame.Size = UDim2.new(1, 0, 0, 36)
-            toggleFrame.BackgroundColor3 = THEME.Card
-            toggleFrame.Parent = tabScroll
-            CreateCorner(toggleFrame)
-
-            local textLabel = Instance.new("TextLabel")
-            textLabel.Size = UDim2.new(1, -60, 1, 0)
-            textLabel.Position = UDim2.new(0, 12, 0, 0)
-            textLabel.BackgroundTransparency = 1
-            textLabel.Text = label
-            textLabel.TextColor3 = THEME.Text
-            textLabel.TextSize = 13
-            textLabel.Font = Enum.Font.Gotham
-            textLabel.TextXAlignment = Enum.TextXAlignment.Left
-            textLabel.Parent = toggleFrame
-
-            local switch = Instance.new("TextButton")
-            switch.Size = UDim2.new(0, 36, 0, 18)
-            switch.Position = UDim2.new(1, -48, 0.5, -9)
-            switch.BackgroundColor3 = state and THEME.Accent or Color3.fromRGB(40, 40, 40)
-            switch.Text = ""
-            switch.Parent = toggleFrame
-            CreateCorner(switch)
-
-            switch.MouseButton1Click:Connect(function()
-                state = not state
-                switch.BackgroundColor3 = state and THEME.Accent or Color3.fromRGB(40, 40, 40)
-                task.spawn(function() callback(state) end)
-            end)
-
-            return toggleFrame
-        end
-
-        function TabElements:CreateSlider(label, min, max, defaultVal, callback)
-            local value = math.clamp(defaultVal or min, min, max)
-            local sliderFrame = Instance.new("Frame")
-            sliderFrame.Size = UDim2.new(1, 0, 0, 46)
-            sliderFrame.BackgroundColor3 = THEME.Card
-            sliderFrame.Parent = tabScroll
-            CreateCorner(sliderFrame)
-
-            local textLabel = Instance.new("TextLabel")
-            textLabel.Size = UDim2.new(0.7, 0, 0, 20)
-            textLabel.Position = UDim2.new(0, 12, 0, 4)
-            textLabel.BackgroundTransparency = 1
-            textLabel.Text = label
-            textLabel.TextColor3 = THEME.Text
-            textLabel.TextSize = 13
-            textLabel.Font = Enum.Font.Gotham
-            textLabel.TextXAlignment = Enum.TextXAlignment.Left
-            textLabel.Parent = sliderFrame
-
-            local valLabel = Instance.new("TextLabel")
-            valLabel.Size = UDim2.new(0.3, -12, 0, 20)
-            valLabel.Position = UDim2.new(0.7, 0, 0, 4)
-            valLabel.BackgroundTransparency = 1
-            valLabel.Text = tostring(value)
-            valLabel.TextColor3 = THEME.Accent
-            valLabel.TextSize = 13
-            valLabel.Font = Enum.Font.GothamBold
-            valLabel.TextXAlignment = Enum.TextXAlignment.Right
-            valLabel.Parent = sliderFrame
-
-            local track = Instance.new("TextButton")
-            track.Size = UDim2.new(1, -24, 0, 6)
-            track.Position = UDim2.new(0, 12, 0, 30)
-            track.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-            track.Text = ""
-            track.Parent = sliderFrame
-            CreateCorner(track)
-
-            local fill = Instance.new("Frame")
-            fill.Size = UDim2.new((value - min) / (max - min), 0, 1, 0)
-            fill.BackgroundColor3 = THEME.Accent
-            fill.BorderSizePixel = 0
-            fill.Parent = track
-            CreateCorner(fill)
-
-            local sliding = false
-            track.InputBegan:Connect(function(input)
-                if input.UserInputType == Enum.UserInputType.MouseButton1 then sliding = true end
-            end)
-            track.InputEnded:Connect(function(input)
-                if input.UserInputType == Enum.UserInputType.MouseButton1 then sliding = false end
-            end)
-
-            UserInputService.InputChanged:Connect(function(input)
-                if sliding and input.UserInputType == Enum.UserInputType.MouseMovement then
-                    task.spawn(function()
-                        local mathPos = math.clamp((input.Position.X - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1)
-                        value = math.floor(min + (max - min) * mathPos)
-                        valLabel.Text = tostring(value)
-                        fill.Size = UDim2.new(mathPos, 0, 1, 0)
-                        callback(value)
-                    end)
-                end
-            end)
-
-            return sliderFrame
-        end
-
-        function TabElements:CreateButton(label, callback)
-            local btnFrame = Instance.new("Frame")
-            btnFrame.Size = UDim2.new(1, 0, 0, 36)
-            btnFrame.BackgroundColor3 = THEME.Card
-            btnFrame.Parent = tabScroll
-            CreateCorner(btnFrame)
-
-            local button = Instance.new("TextButton")
-            button.Size = UDim2.new(1, 0, 1, 0)
-            button.BackgroundTransparency = 1
-            button.Text = label
-            button.TextColor3 = THEME.Text
-            button.TextSize = 13
-            button.Font = Enum.Font.GothamMedium
-            button.Parent = btnFrame
-
-            button.MouseButton1Click:Connect(function()
-                task.spawn(function() callback() end)
-            end)
-
-            return btnFrame
-        end
-
-        return TabElements
-    end
-
-    function UILib:ToggleVisibility()
+    local function Select()
         task.spawn(function()
-            self.Visible = not self.Visible
-            self.MainFrame.Visible = self.Visible
+            for _, t in pairs(UILib.Tabs) do
+                t.Page.Visible = false
+                t.Button.BackgroundColor3 = THEME.Card
+                t.Button.TextColor3 = THEME.TextMuted
+            end
+            pageScroll.Visible = true
+            tabButton.BackgroundColor3 = THEME.Accent
+            tabButton.TextColor3 = Color3.fromRGB(0, 0, 0)
+            UILib.CurrentTab = tabObj
         end)
     end
 
-    return WindowObj
+    tabButton.MouseButton1Click:Connect(Select)
+
+    if #UILib.Tabs == 0 then
+        Select()
+    end
+
+    table.insert(UILib.Tabs, tabObj)
+
+    -- Dynamic Element Builder for Tab
+    local TabElements = {}
+
+    function TabElements:CreateToggle(label, defaultState, callback)
+        local state = defaultState or false
+        local toggleFrame = Instance.new("Frame")
+        toggleFrame.Size = UDim2.new(1, -6, 0, 36)
+        toggleFrame.BackgroundColor3 = THEME.Card
+        toggleFrame.Parent = pageScroll
+        CreateCorner(toggleFrame)
+
+        local textLabel = Instance.new("TextLabel")
+        textLabel.Size = UDim2.new(1, -60, 1, 0)
+        textLabel.Position = UDim2.new(0, 12, 0, 0)
+        textLabel.BackgroundTransparency = 1
+        textLabel.Text = label
+        textLabel.TextColor3 = THEME.Text
+        textLabel.TextSize = 13
+        textLabel.Font = Enum.Font.Gotham
+        textLabel.TextXAlignment = Enum.TextXAlignment.Left
+        textLabel.Parent = toggleFrame
+
+        local switch = Instance.new("TextButton")
+        switch.Size = UDim2.new(0, 36, 0, 18)
+        switch.Position = UDim2.new(1, -48, 0.5, -9)
+        switch.BackgroundColor3 = state and THEME.Accent or Color3.fromRGB(40, 40, 40)
+        switch.Text = ""
+        switch.Parent = toggleFrame
+        CreateCorner(switch)
+
+        switch.MouseButton1Click:Connect(function()
+            state = not state
+            switch.BackgroundColor3 = state and THEME.Accent or Color3.fromRGB(40, 40, 40)
+            if callback then
+                task.spawn(function() callback(state) end)
+            end
+        end)
+
+        return toggleFrame
+    end
+
+    function TabElements:CreateSlider(label, min, max, defaultVal, callback)
+        local value = math.clamp(defaultVal or min, min, max)
+        local sliderFrame = Instance.new("Frame")
+        sliderFrame.Size = UDim2.new(1, -6, 0, 46)
+        sliderFrame.BackgroundColor3 = THEME.Card
+        sliderFrame.Parent = pageScroll
+        CreateCorner(sliderFrame)
+
+        local textLabel = Instance.new("TextLabel")
+        textLabel.Size = UDim2.new(0.7, 0, 0, 20)
+        textLabel.Position = UDim2.new(0, 12, 0, 4)
+        textLabel.BackgroundTransparency = 1
+        textLabel.Text = label
+        textLabel.TextColor3 = THEME.Text
+        textLabel.TextSize = 13
+        textLabel.Font = Enum.Font.Gotham
+        textLabel.TextXAlignment = Enum.TextXAlignment.Left
+        textLabel.Parent = sliderFrame
+
+        local valLabel = Instance.new("TextLabel")
+        valLabel.Size = UDim2.new(0.3, -12, 0, 20)
+        valLabel.Position = UDim2.new(0.7, 0, 0, 4)
+        valLabel.BackgroundTransparency = 1
+        valLabel.Text = tostring(value)
+        valLabel.TextColor3 = THEME.Accent
+        valLabel.TextSize = 13
+        valLabel.Font = Enum.Font.GothamBold
+        valLabel.TextXAlignment = Enum.TextXAlignment.Right
+        valLabel.Parent = sliderFrame
+
+        local track = Instance.new("TextButton")
+        track.Size = UDim2.new(1, -24, 0, 6)
+        track.Position = UDim2.new(0, 12, 0, 30)
+        track.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+        track.Text = ""
+        track.Parent = sliderFrame
+        CreateCorner(track)
+
+        local fill = Instance.new("Frame")
+        fill.Size = UDim2.new((value - min) / (max - min), 0, 1, 0)
+        fill.BackgroundColor3 = THEME.Accent
+        fill.BorderSizePixel = 0
+        fill.Parent = track
+        CreateCorner(fill)
+
+        local sliding = false
+        track.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then sliding = true end
+        end)
+        track.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then sliding = false end
+        end)
+
+        UserInputService.InputChanged:Connect(function(input)
+            if sliding and input.UserInputType == Enum.UserInputType.MouseMovement then
+                task.spawn(function()
+                    local mathPos = math.clamp((input.Position.X - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1)
+                    value = math.floor(min + (max - min) * mathPos)
+                    valLabel.Text = tostring(value)
+                    fill.Size = UDim2.new(mathPos, 0, 1, 0)
+                    if callback then callback(value) end
+                end)
+            end
+        end)
+
+        return sliderFrame
+    end
+
+    function TabElements:CreateButton(label, callback)
+        local btnFrame = Instance.new("Frame")
+        btnFrame.Size = UDim2.new(1, -6, 0, 36)
+        btnFrame.BackgroundColor3 = THEME.Card
+        btnFrame.Parent = pageScroll
+        CreateCorner(btnFrame)
+
+        local button = Instance.new("TextButton")
+        button.Size = UDim2.new(1, 0, 1, 0)
+        button.BackgroundTransparency = 1
+        button.Text = label
+        button.TextColor3 = THEME.Text
+        button.TextSize = 13
+        button.Font = Enum.Font.GothamMedium
+        button.Parent = btnFrame
+
+        button.MouseButton1Click:Connect(function()
+            if callback then
+                task.spawn(function() callback() end)
+            end
+        end)
+
+        return btnFrame
+    end
+
+    return TabElements
+end
+
+function UILib:ToggleVisibility()
+    task.spawn(function()
+        self.Visible = not self.Visible
+        if self.MainFrame then
+            self.MainFrame.Visible = self.Visible
+        end
+    end)
 end
 
 function UILib:Destroy()
