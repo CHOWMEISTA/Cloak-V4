@@ -1,5 +1,5 @@
 --[[
-    Cloak V4 - Player Movement Debugging Engine (Crash-Hardened)
+    Cloak V4 - Player Movement Debugging Engine (Freeze-Proof)
     File: movement.lua
 --]]
 
@@ -54,8 +54,10 @@ function MovementModule:Init()
     table.insert(self.Connections, inputBegan)
     table.insert(self.Connections, inputEnded)
 
-    -- Bind flight velocity application to Heartbeat physics step (prevents RenderStepped crashes)
+    -- Bound to Heartbeat physics step for zero frame lag
     local physicsConn = RunService.Heartbeat:Connect(function()
+        if not self.SpeedEnabled and not self.FlightEnabled then return end
+
         local _, root, humanoid = GetSafeCharacter()
 
         if humanoid and self.SpeedEnabled then
@@ -88,8 +90,8 @@ function MovementModule:Init()
 end
 
 function MovementModule:SetFlightEnabled(state)
-    self.FlightEnabled = state
-    task.defer(function()
+    task.spawn(function()
+        self.FlightEnabled = state
         local _, root, humanoid = GetSafeCharacter()
         if not state and root and humanoid then
             root.AssemblyLinearVelocity = Vector3.zero
@@ -99,29 +101,33 @@ function MovementModule:SetFlightEnabled(state)
 end
 
 function MovementModule:SetFlightSpeed(speed)
-    self.FlightSpeed = speed
+    task.spawn(function() self.FlightSpeed = speed end)
 end
 
 function MovementModule:SetSpeedEnabled(state)
-    self.SpeedEnabled = state
-    if not state then
-        task.defer(function()
+    task.spawn(function()
+        self.SpeedEnabled = state
+        if not state then
             local _, _, humanoid = GetSafeCharacter()
             if humanoid then humanoid.WalkSpeed = 16 end
-        end)
-    end
+        end
+    end)
 end
 
 function MovementModule:SetWalkSpeed(speed)
-    self.WalkSpeed = speed
+    task.spawn(function() self.WalkSpeed = speed end)
 end
 
 function MovementModule:Destroy()
-    self:SetFlightEnabled(false)
-    self:SetSpeedEnabled(false)
+    task.spawn(function()
+        self:SetFlightEnabled(false)
+        self:SetSpeedEnabled(false)
 
-    for _, conn in ipairs(self.Connections) do conn:Disconnect() end
-    table.clear(self.Connections)
+        for _, conn in ipairs(self.Connections) do
+            pcall(function() conn:Disconnect() end)
+        end
+        table.clear(self.Connections)
+    end)
 end
 
 return MovementModule

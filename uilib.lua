@@ -1,5 +1,5 @@
 --[[
-    Cloak V4 - Custom UI Library Framework (Crash-Hardened)
+    Cloak V4 - Custom UI Library Framework (Freeze-Proof)
     File: uilib.lua
 --]]
 
@@ -97,8 +97,8 @@ function UILib:CreateWindow(titleText)
     contentArea.BackgroundTransparency = 1
     contentArea.Parent = mainFrame
 
-    -- Dragging Logic
-    local dragging, dragInput, dragStart, startPos
+    -- Non-blocking Dragging Implementation
+    local dragging, dragStart, startPos
     mainFrame.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
             dragging = true
@@ -115,13 +115,15 @@ function UILib:CreateWindow(titleText)
 
     UserInputService.InputChanged:Connect(function(input)
         if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-            local delta = input.Position - dragStart
-            mainFrame.Position = UDim2.new(
-                startPos.X.Scale,
-                startPos.X.Offset + delta.X,
-                startPos.Y.Scale,
-                startPos.Y.Offset + delta.Y
-            )
+            task.spawn(function()
+                local delta = input.Position - dragStart
+                mainFrame.Position = UDim2.new(
+                    startPos.X.Scale,
+                    startPos.X.Offset + delta.X,
+                    startPos.Y.Scale,
+                    startPos.Y.Offset + delta.Y
+                )
+            end)
         end
     end)
 
@@ -159,14 +161,18 @@ function UILib:CreateWindow(titleText)
         local tabObj = { Page = tabScroll, Button = tabButton }
 
         local function Select()
-            for _, t in pairs(WindowObj.Tabs) do
-                t.Page.Visible = false
-                t.Button.BackgroundColor3 = THEME.Card
-                t.Button.TextColor3 = THEME.TextMuted
-            end
-            tabScroll.Visible = true
-            tabButton.BackgroundColor3 = THEME.Accent
-            tabButton.TextColor3 = Color3.fromRGB(0, 0, 0)
+            task.spawn(function()
+                for i = 1, #WindowObj.Tabs do
+                    local t = WindowObj.Tabs[i]
+                    t.Page.Visible = false
+                    t.Button.BackgroundColor3 = THEME.Card
+                    t.Button.TextColor3 = THEME.TextMuted
+                    if i % 5 == 0 then task.wait() end -- Yield on large tab counts
+                end
+                tabScroll.Visible = true
+                tabButton.BackgroundColor3 = THEME.Accent
+                tabButton.TextColor3 = Color3.fromRGB(0, 0, 0)
+            end)
         end
 
         tabButton.MouseButton1Click:Connect(Select)
@@ -205,7 +211,10 @@ function UILib:CreateWindow(titleText)
             switch.MouseButton1Click:Connect(function()
                 state = not state
                 switch.BackgroundColor3 = state and THEME.Accent or Color3.fromRGB(40, 40, 40)
-                task.spawn(callback, state)
+                -- Isolate callback execution completely
+                task.spawn(function()
+                    callback(state)
+                end)
             end)
 
             return toggleFrame
@@ -255,10 +264,12 @@ function UILib:CreateWindow(titleText)
 
             UserInputService.InputChanged:Connect(function(input)
                 if sliding and input.UserInputType == Enum.UserInputType.MouseMovement then
-                    local mathPos = math.clamp((input.Position.X - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1)
-                    value = math.floor(min + (max - min) * mathPos)
-                    fill.Size = UDim2.new(mathPos, 0, 1, 0)
-                    task.spawn(callback, value)
+                    task.spawn(function()
+                        local mathPos = math.clamp((input.Position.X - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1)
+                        value = math.floor(min + (max - min) * mathPos)
+                        fill.Size = UDim2.new(mathPos, 0, 1, 0)
+                        callback(value)
+                    end)
                 end
             end)
 
@@ -282,7 +293,9 @@ function UILib:CreateWindow(titleText)
             button.Parent = btnFrame
 
             button.MouseButton1Click:Connect(function()
-                task.spawn(callback)
+                task.spawn(function()
+                    callback()
+                end)
             end)
 
             return btnFrame
@@ -292,15 +305,21 @@ function UILib:CreateWindow(titleText)
     end
 
     function UILib:ToggleVisibility()
-        self.Visible = not self.Visible
-        self.MainFrame.Visible = self.Visible
+        task.spawn(function()
+            self.Visible = not self.Visible
+            self.MainFrame.Visible = self.Visible
+        end)
     end
 
     return WindowObj
 end
 
 function UILib:Destroy()
-    if self.ScreenGui then self.ScreenGui:Destroy() end
+    task.spawn(function()
+        if self.ScreenGui then
+            self.ScreenGui:Destroy()
+        end
+    end)
 end
 
 return UILib

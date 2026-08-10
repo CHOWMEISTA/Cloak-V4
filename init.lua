@@ -1,5 +1,5 @@
 --[[
-    Cloak V4 - Dynamic Remote Bootstrapper (Crash-Hardened)
+    Cloak V4 - Dynamic Remote Bootstrapper (Freeze-Proof)
     File: init.lua
 --]]
 
@@ -17,13 +17,13 @@ local CloakV4 = {
 
 local BASE_URL = "https://raw.githubusercontent.com/CHOWMEISTA/Cloak-V4/refs/heads/main/"
 
--- Safe Remote Module Loader with Execution Yielding
+-- Safe Remote Module Loader with GC Breathers
 local function LoadRemoteModule(fileName)
     local fullUrl = BASE_URL .. fileName
     print(string.format("[Cloak V4] Fetching remote file: %s...", fileName))
 
-    -- Intentional yield to prevent network thread starvation
-    task.wait(0.05)
+    -- Explicit thread yield to let the task scheduler breathe
+    task.wait(0.2)
 
     local httpSuccess, rawCode = pcall(function()
         return game:HttpGet(fullUrl)
@@ -34,6 +34,8 @@ local function LoadRemoteModule(fileName)
         return nil
     end
 
+    task.wait(0.1)
+
     local compileSuccess, moduleChunk = pcall(function()
         return loadstring(rawCode)
     end)
@@ -43,7 +45,6 @@ local function LoadRemoteModule(fileName)
         return nil
     end
 
-    -- Delay chunk execution slightly to allow engine service initialization
     task.wait(0.1)
 
     local executeSuccess, loadedModule = pcall(moduleChunk)
@@ -58,19 +59,23 @@ end
 function CloakV4:Init()
     if self.Active then return end
 
-    -- Wrap whole initialization in task.spawn to keep calling executor context alive
+    -- Fully decouple the bootstrap sequence onto its own isolated green thread
     task.spawn(function()
         local UILib = LoadRemoteModule("uilib.lua")
         if not UILib then warn("[Cloak V4 Abort] uilib.lua failed.") return end
+        task.wait(0.2)
 
         local Combat = LoadRemoteModule("combat.lua")
         if not Combat then warn("[Cloak V4 Abort] combat.lua failed.") return end
+        task.wait(0.2)
 
         local Movement = LoadRemoteModule("movement.lua")
         if not Movement then warn("[Cloak V4 Abort] movement.lua failed.") return end
+        task.wait(0.2)
 
         local Misc = LoadRemoteModule("misc.lua")
         if not Misc then warn("[Cloak V4 Abort] misc.lua failed.") return end
+        task.wait(0.2)
 
         self.Active = true
         self.Modules = { UILib = UILib, Combat = Combat, Movement = Movement, Misc = Misc }
@@ -101,30 +106,39 @@ function CloakV4:Init()
         local toggleConnection = UserInputService.InputBegan:Connect(function(input, gpe)
             if gpe then return end
             if input.KeyCode == Enum.KeyCode.RightShift then
-                Window:ToggleVisibility()
+                task.spawn(function()
+                    Window:ToggleVisibility()
+                end)
             end
         end)
         table.insert(self.Connections, toggleConnection)
 
-        -- Safely initialize child runtimes asynchronously
-        task.defer(function() Combat:Init() end)
-        task.defer(function() Movement:Init() end)
-        task.defer(function() Misc:Init() end)
+        -- Initialize child modules in isolated green threads with staggering
+        task.spawn(function() Combat:Init() end)
+        task.wait(0.1)
+        task.spawn(function() Movement:Init() end)
+        task.wait(0.1)
+        task.spawn(function() Misc:Init() end)
 
         print("[Cloak V4] Suite fully loaded and active.")
     end)
 end
 
 function CloakV4:Destroy()
-    for _, conn in ipairs(self.Connections) do conn:Disconnect() end
-    table.clear(self.Connections)
+    task.spawn(function()
+        for _, conn in ipairs(self.Connections) do
+            pcall(function() conn:Disconnect() end)
+        end
+        table.clear(self.Connections)
 
-    if self.Modules.Combat then self.Modules.Combat:Destroy() end
-    if self.Modules.Movement then self.Modules.Movement:Destroy() end
-    if self.Modules.Misc then self.Modules.Misc:Destroy() end
-    if self.Modules.UILib then self.Modules.UILib:Destroy() end
+        if self.Modules.Combat then pcall(function() self.Modules.Combat:Destroy() end) end
+        if self.Modules.Movement then pcall(function() self.Modules.Movement:Destroy() end) end
+        if self.Modules.Misc then pcall(function() self.Modules.Misc:Destroy() end) end
+        if self.Modules.UILib then pcall(function() self.Modules.UILib:Destroy() end) end
 
-    self.Active = false
+        self.Active = false
+        print("[Cloak V4] Clean shutdown complete.")
+    end)
 end
 
 task.defer(function()
